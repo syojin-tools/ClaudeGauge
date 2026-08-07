@@ -1,0 +1,15 @@
+# ビルド成果物
+/dist/
+/pkg-*/
+/package/
+*.zip
+*.exe
+*.pdb
+
+# 診断ログ
+*-diag-*.txt
+
+# エディタ
+.vs/
+.vscode/
+.claude/
