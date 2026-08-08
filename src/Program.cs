@@ -221,7 +221,11 @@ namespace ClaudeUsageTray
         // ------------------------------------------------------------------
         private void OnTick(object sender, EventArgs e)
         {
-            if (_widget != null && !_widget.IsDisposed) _widget.EnsureTopMost();
+            if (_widget != null && !_widget.IsDisposed)
+            {
+                _widget.EnsureTopMost();
+                _widget.Tick();   // 残り時間はファイルを読み直さなくても進む
+            }
 
             double since = (DateTime.UtcNow - _lastRead).TotalSeconds;
 
@@ -327,7 +331,7 @@ namespace ClaudeUsageTray
                 string line1 = "セッション " + Fmt(s.Session) + " / 週次 " + Fmt(s.Weekly);
                 string line2;
                 if (s.Stale)
-                    line2 = "Claude アプリ未起動";
+                    line2 = "更新が止まっています";
                 else if (s.SessionResetLocal.HasValue)
                 {
                     TimeSpan left = s.SessionResetLocal.Value - DateTime.Now;
@@ -338,7 +342,10 @@ namespace ClaudeUsageTray
                 }
                 else line2 = "リセット時刻は不明";
 
-                string line3 = "更新 " + DetailForm.FormatAge(s.AgeMinutes);
+                // 数字が動かないときに「アプリが生きているか」を判断できるよう、
+                // データの新しさと、最後にファイルを見に行った時刻を分けて出す。
+                string line3 = "データ " + DetailForm.FormatAge(s.AgeMinutes)
+                             + " / 確認 " + _lastRead.ToLocalTime().ToString("H:mm:ss");
                 text = line1 + "\n" + line2 + "\n" + line3;
             }
 

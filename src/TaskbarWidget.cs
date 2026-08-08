@@ -85,9 +85,28 @@ namespace ClaudeUsageTray
         }
 
         // ------------------------------------------------------------------
+        private string _shownValue;
+        private string _shownSub;
+
         public void SetData(UsageSnapshot snap)
         {
             _snap = snap;
+            _shownValue = null;   // 値が変わっていなくても色が変わりうるので描き直す
+            Tick();
+        }
+
+        /// <summary>
+        /// 残り時間や経過時間は、ファイルを読み直さなくても時間だけで変わる。
+        /// 毎秒呼ばれる前提で、実際に文字が変わったときだけ再描画する。
+        /// </summary>
+        public void Tick()
+        {
+            if (IsDisposed) return;
+            string value = ValueText();
+            string sub = SubText();
+            if (value == _shownValue && sub == _shownSub) return;
+            _shownValue = value;
+            _shownSub = sub;
             ResizeToContent();
             Invalidate();
         }
