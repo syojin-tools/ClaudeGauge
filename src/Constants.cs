@@ -12,7 +12,7 @@ namespace ClaudeUsageTray
     {
         public const string AppName = "ClaudeGauge";
         public const string AppDisplayName = "Claudeゲージ";
-        public const string AppVersion = "1.0.1";
+        public const string AppVersion = "1.0.2";
 
         /// <summary>Anthropic 社の公式ツールではないことを明示する。ウィンドウと README の両方で使う。</summary>
         public const string Disclaimer =

@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -22,16 +23,29 @@ namespace ClaudeUsageTray
                 AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
                 {
                     Exception ex = e.ExceptionObject as Exception;
-                    DiagLog.Write("未処理例外: {0}", ex == null ? "(不明)" : ex.ToString());
+                    DiagLog.WriteToFile("未処理例外で終了: " + (ex == null ? "(不明)" : ex.ToString()));
                 };
                 Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e)
                 {
-                    DiagLog.Write("UI スレッド例外: {0}", e.Exception.ToString());
+                    DiagLog.WriteToFile("UI スレッド例外: " + e.Exception.ToString());
                 };
 
-                using (TrayApp app = new TrayApp())
+                DiagLog.WriteToFile("--- 起動 v" + Constants.AppVersion + " ---");
+
+                try
                 {
-                    Application.Run(app);
+                    using (TrayApp app = new TrayApp())
+                    {
+                        Application.Run(app);
+                    }
+                    DiagLog.WriteToFile("正常に終了しました");
+                }
+                catch (Exception ex)
+                {
+                    // ログオン直後など、シェルが準備できていない状況で落ちても
+                    // 原因が残るようにする
+                    DiagLog.WriteToFile("起動処理で例外: " + ex.ToString());
+                    throw;
                 }
             }
         }
@@ -46,6 +60,7 @@ namespace ClaudeUsageTray
         private DetailForm _form;
         private TaskbarWidget _widget;
         private readonly ContextMenuStrip _menu;
+        private readonly TaskbarWatcher _taskbarWatcher;
 
         private RenderedIcon _icon;
         private UsageSnapshot _snap;
@@ -71,12 +86,16 @@ namespace ClaudeUsageTray
             _menu = BuildMenu();
 
             _tray = new NotifyIcon();
-            _tray.Visible = true;
             _tray.Text = Constants.AppDisplayName;
             _tray.ContextMenuStrip = _menu;
             _tray.MouseClick += OnTrayClick;
             _tray.BalloonTipClicked += delegate { ShowDetail(); };
             SetIcon("…", Theme.LevelColor(UsageLevel.Normal), false);
+            ShowTrayIcon();
+
+            // ログオン直後は explorer がまだ通知領域を作っていないことがある。
+            // その場合トレイ登録は失敗するので、作られたときに登録し直す。
+            _taskbarWatcher = new TaskbarWatcher(OnTaskbarCreated);
 
             ApplyWidgetVisibility();
             SetupWatcher();
@@ -108,6 +127,32 @@ namespace ClaudeUsageTray
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exit);
             return menu;
+        }
+
+        /// <summary>トレイ登録は失敗しうる。失敗しても落とさず、あとで再試行する。</summary>
+        private void ShowTrayIcon()
+        {
+            try
+            {
+                _tray.Visible = true;
+            }
+            catch (Exception ex)
+            {
+                DiagLog.WriteToFile("トレイアイコンを表示できませんでした（後で再試行します）: "
+                    + ex.GetType().Name + " " + ex.Message);
+            }
+        }
+
+        /// <summary>explorer が起動・再起動したときに呼ばれる。</summary>
+        private void OnTaskbarCreated()
+        {
+            DiagLog.WriteToFile("タスクバーが作成されたため、トレイアイコンを登録し直します");
+            try { _tray.Visible = false; }
+            catch { }
+            ShowTrayIcon();
+            ApplyIcon(_snap);
+            UpdateTooltip();
+            if (_widget != null && !_widget.IsDisposed) _widget.EnsureTopMost();
         }
 
         private void OnTrayClick(object sender, MouseEventArgs e)
@@ -226,6 +271,9 @@ namespace ClaudeUsageTray
                 _widget.EnsureTopMost();
                 _widget.Tick();   // 残り時間はファイルを読み直さなくても進む
             }
+
+            // 何らかの理由でトレイから消えていたら黙って戻す
+            if (_tray != null && !_tray.Visible) ShowTrayIcon();
 
             double since = (DateTime.UtcNow - _lastRead).TotalSeconds;
 
@@ -429,7 +477,7 @@ namespace ClaudeUsageTray
         // ------------------------------------------------------------------
         private void ExitApp()
         {
-            DiagLog.Write("終了します");
+            DiagLog.WriteToFile("メニューから終了しました");
             _tick.Stop();
             _tray.Visible = false;
             ExitThread();
@@ -441,6 +489,7 @@ namespace ClaudeUsageTray
             {
                 if (_tick != null) { _tick.Stop(); _tick.Dispose(); }
                 if (_watcher != null) { try { _watcher.EnableRaisingEvents = false; } catch { } _watcher.Dispose(); }
+                if (_taskbarWatcher != null && !_taskbarWatcher.IsDisposed) _taskbarWatcher.Dispose();
                 if (_widget != null && !_widget.IsDisposed) _widget.Dispose();
                 if (_form != null && !_form.IsDisposed) _form.Dispose();
                 if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }

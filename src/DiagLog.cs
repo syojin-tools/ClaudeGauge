@@ -12,6 +12,9 @@ namespace ClaudeUsageTray
     internal static class DiagLog
     {
         private const int MaxLines = 800;
+
+        /// <summary>メモ帳でそのまま開けるよう BOM 付き UTF-8 で書く。</summary>
+        private static readonly System.Text.Encoding LogEncoding = new System.Text.UTF8Encoding(true);
         private static readonly object Sync = new object();
         private static readonly Queue<string> Lines = new Queue<string>();
 
@@ -23,6 +26,43 @@ namespace ClaudeUsageTray
             {
                 Lines.Enqueue(line);
                 while (Lines.Count > MaxLines) Lines.Dequeue();
+            }
+        }
+
+        /// <summary>
+        /// 起動・終了など、落ちても消えては困る記録をファイルに残す。
+        /// スタートアップで起動しないといった、後から追えない不具合の調査用。
+        /// </summary>
+        public static void WriteToFile(string message)
+        {
+            Write(message);
+            try
+            {
+                string dir = Constants.AppDataDir;
+                System.IO.Directory.CreateDirectory(dir);
+                string path = System.IO.Path.Combine(dir, "startup.log");
+
+                // 肥大化させない。一定量を超えたら古い行を捨てる
+                if (System.IO.File.Exists(path))
+                {
+                    System.IO.FileInfo fi = new System.IO.FileInfo(path);
+                    if (fi.Length > 64 * 1024)
+                    {
+                        string[] all = System.IO.File.ReadAllLines(path, LogEncoding);
+                        int keep = Math.Min(all.Length, 200);
+                        string[] tail = new string[keep];
+                        Array.Copy(all, all.Length - keep, tail, 0, keep);
+                        System.IO.File.WriteAllLines(path, tail, LogEncoding);
+                    }
+                }
+
+                System.IO.File.AppendAllText(path,
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+                    + "  " + message + Environment.NewLine, LogEncoding);
+            }
+            catch
+            {
+                // ログが書けないこと自体で動作を止めない
             }
         }
 
